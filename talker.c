@@ -1,64 +1,54 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
+#include <sys/un.h>
+#include <unistd.h>
 
-#define SERVERPORT "4950"	// the port users will be connecting to
+#define SOCK_PATH "echo_socket"
 
-int main(int argc, char *argv[])
+int main(void)
 {
-	int sockfd;
-	struct addrinfo hints, *servinfo, *p;
-	int rv;
-	int numbytes;
+    int s, t, len;
+    struct sockaddr_un remote;
+    char str[100];
 
-	if (argc != 3) {
-		fprintf(stderr,"usage: talker hostname message\n");
-		exit(1);
-	}
+    if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+        perror("socket");
+        exit(1);
+    }
 
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_DGRAM;
+    printf("Trying to connect...\n");
 
-	if ((rv = getaddrinfo(argv[1], SERVERPORT, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return 1;
-	}
+    remote.sun_family = AF_UNIX;
+    strcpy(remote.sun_path, SOCK_PATH);
+    len = strlen(remote.sun_path) + sizeof(remote.sun_family);
+    if (connect(s, (struct sockaddr *)&remote, len) == -1) {
+        perror("connect");
+        exit(1);
+    }
 
-	// loop through all the results and make a socket
-	for(p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sockfd = socket(p->ai_family, p->ai_socktype,
-				p->ai_protocol)) == -1) {
-			perror("talker: socket");
-			continue;
-		}
+    printf("Connected.\n");
 
-		break;
-	}
+    while(printf("> "), fgets(str, 100, stdin), !feof(stdin)) {
+        if (send(s, str, strlen(str), 0) == -1) {
+            perror("send");
+            exit(1);
+        }
 
-	if (p == NULL) {
-		fprintf(stderr, "talker: failed to create socket\n");
-		return 2;
-	}
+        if ((t=recv(s, str, 100, 0)) > 0) {
+            str[t] = '\0';
+            printf("echo> %s", str);
+        } else {
+            if (t < 0) perror("recv");
+            else printf("Server closed connection\n");
+            exit(1);
+        }
+    }
 
-	if ((numbytes = sendto(sockfd, argv[2], strlen(argv[2]), 0,
-			 p->ai_addr, p->ai_addrlen)) == -1) {
-		perror("talker: sendto");
-		exit(1);
-	}
+    close(s);
 
-	freeaddrinfo(servinfo);
-
-	printf("talker: sent %d bytes to %s\n", numbytes, argv[1]);
-	close(sockfd);
-
-	return 0;
+    return 0;
 }
-
