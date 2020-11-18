@@ -1,12 +1,12 @@
-CFLAGS += -std=c11 -Wall -Wextra -Wpedantic -Waggregate-return -Wwrite-strings -Wvla -Wfloat-equal -D_GNU_SOURCE
-LDLIBS += -lrt -lpthread
+CFLAGS += -Wall -Wextra -Wpedantic -Wwrite-strings -Wvla -Winline -Wfloat-equal -Wstack-usage=512
 
-default: server talker
+server: LDLIBS += -lpthread
+server: server.o Pool.o Queue.o Handle.o
 
-server: server.o
-talker: talker.o
+.DEFAULT: server
+
+debug: CFLAGS += -g
+debug: .DEFAULT
 
 clean:
-	$(RM) *.o *.a *.so *.out core server talker
-
-
+	$(RM) *.o server
