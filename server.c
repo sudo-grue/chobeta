@@ -1,68 +1,111 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <errno.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/un.h>
-#include <unistd.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <sys/wait.h>
+#include <signal.h>
 
-#define SOCK_PATH "echo_socket"
+#include "Handle.h"
+#include "Pool.h"
+#include <pthread.h>
+
+#define PORT "3490"		// the port users will be connecting to
+#define BACKLOG 10		// how many pending connections queue will hold
+
+void sigint_handler(int s)
+{
+	(void)s;
+}
 
 int main(void)
 {
-    int s, s2, len;
-    socklen_t t;
-    struct sockaddr_un local, remote;
-    char str[100];
+	int sockfd, new_fd;	// listen on sock_fd, new connection on new_fd
+	struct addrinfo hints, *servinfo, *p;
+	struct sockaddr_storage their_addr;	// connector's address information
+	socklen_t sin_size;
+	int yes = 1;
+	char s[INET6_ADDRSTRLEN];
+	int rv;
 
-    if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-        perror("socket");
-        exit(1);
-    }
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;	// use my IP
 
-    local.sun_family = AF_UNIX;
-    strcpy(local.sun_path, SOCK_PATH);
-    unlink(local.sun_path);
-    len = strlen(local.sun_path) + sizeof(local.sun_family);
-    if (bind(s, (struct sockaddr *)&local, len) == -1) {
-        perror("bind");
-        exit(1);
-    }
+	if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		return 1;
+	}
+	// loop through all the results and bind to the first we can
+	for (p = servinfo; p != NULL; p = p->ai_next) {
+		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+			perror("server: socket");
+			continue;
+		}
 
-    if (listen(s, 5) == -1) {
-        perror("listen");
-        exit(1);
-    }
+		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
+			perror("setsockopt");
+			exit(1);
+		}
 
-    for(;;) {
-        int done, n;
-        printf("Waiting for a connection...\n");
-        t = sizeof(remote);
-        if ((s2 = accept(s, (struct sockaddr *)&remote, &t)) == -1) {
-            perror("accept");
-            exit(1);
-        }
+		if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+			close(sockfd);
+			perror("server: bind");
+			continue;
+		}
+		break;
+	}
 
-        printf("Connected.\n");
+	freeaddrinfo(servinfo);	// all done with this structure
 
-        done = 0;
-        do {
-            n = recv(s2, str, 100, 0);
-            if (n <= 0) {
-                if (n < 0) perror("recv");
-                done = 1;
-            }
+	if (p == NULL) {
+		fprintf(stderr, "server: failed to bind\n");
+		exit(1);
+	}
 
-            if (!done) 
-                if (send(s2, str, n, 0) < 0) {
-                    perror("send");
-                    done = 1;
-                }
-        } while (!done);
+	if (listen(sockfd, BACKLOG) == -1) {
+		perror("listen");
+		exit(1);
+	}
 
-        close(s2);
-    }
+	struct sigaction si = {
+		.sa_handler = sigint_handler,
+	};
 
-    return 0;
+	if (sigaction(SIGINT, &si, NULL) == -1) {
+		perror("sigint");
+		exit(1);
+	}
+
+	Pool *pool = Pool_create(152);
+	if (!pool) {
+		exit(1);
+	}
+
+	printf("server: waiting for connections...\n");
+	while (1) {
+		sin_size = sizeof(their_addr);
+		new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+		if (new_fd == -1) {
+			if (errno == EINTR) {
+				printf("Shutting Down!\n");
+				break;
+			}
+			perror("accept");
+			continue;
+		}
+		inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof(s));
+		printf("server: got connection from %s:%d\n", s, ntohs(get_in_port((struct sockaddr *)&their_addr)));
+		Pool_addTask(pool, Handle_request, &new_fd);
+	}
+	Pool_wait(pool);
+	Pool_destroy(pool);
+	close(sockfd);
+	return 0;
 }
