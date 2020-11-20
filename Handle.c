@@ -1,25 +1,27 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <errno.h>
 #include <unistd.h>
 #include "Handle.h"
 #include "Pool.h"
+#include "Mirrors.h"
 
 struct package {
 	Pool *pool;
-//	Members *mirror;
+	Mirrors *mirrors;
 	int rx_fd;
 };
 
-Package *Handle_createPackage(Pool *pool, int rx_fd)
+Package *Handle_createPackage(Pool *pool, Mirrors *mirrors, int rx_fd)
 {
 	Package *p = malloc(sizeof(*p));
 	if (!p) {
 		return NULL;
 	}
 	p->pool = pool;
+	p->mirrors = mirrors;
 	p->rx_fd = rx_fd;
 	return p;
 }
@@ -38,6 +40,16 @@ void *Handle_request(void *arg)
 	if (send(package->rx_fd, "Hello, world!\n", 14, 0) == -1) {
 		perror("send");
 	}
+	char s[INET6_ADDRSTRLEN];
+
+	struct sockaddr_storage *addr = malloc(sizeof(*addr));
+	socklen_t addr_sz = sizeof(struct sockaddr_in);
+	getpeername(package->rx_fd, (struct sockaddr *)addr, &addr_sz);
+
+	inet_ntop(addr->ss_family, get_in_addr((struct sockaddr *)addr), s, sizeof(s));
+	printf("thread: got connection from %s:%d\n", s, ntohs(get_in_port((struct sockaddr *)addr)));
+
+	Mirrors_add(package->mirrors, addr);
 	close(package->rx_fd);
 	Pool_addTask(package->pool, Handle_print, NULL);
 	free(package);
