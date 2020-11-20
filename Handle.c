@@ -53,7 +53,7 @@ void *Handle_request(void *arg)
 	return NULL;
 }
 
-void *get_in_addr(struct sockaddr *sa)
+void *Handle_getAddr(struct sockaddr *sa)
 {
 	if (sa->sa_family == AF_INET) {
 		return &(((struct sockaddr_in *)sa)->sin_addr);
@@ -62,7 +62,7 @@ void *get_in_addr(struct sockaddr *sa)
 }
 
 // https://stackoverflow.com/questions/2371910/how-to-get-the-port-number-from-struct-addrinfo-in-unix-c
-u_int16_t get_in_port(struct sockaddr *sa)
+u_int16_t Handle_getPort(struct sockaddr *sa)
 {
 	if (sa->sa_family == AF_INET) {
 		return (((struct sockaddr_in *)sa)->sin_port);
