@@ -69,7 +69,7 @@ void Mirrors_rm(Mirrors *m, struct sockaddr_storage *sa)
 		}
 		pthread_rwlock_unlock(&m->lock);
 		curr->next = NULL;
-		curr->sa = NULL;
+		free(curr->sa);
 		free(curr);
 	} else {
 		while (next) {
