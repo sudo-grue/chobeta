@@ -5,14 +5,42 @@
 #include <errno.h>
 #include <unistd.h>
 #include "Handle.h"
+#include "Pool.h"
+
+struct package {
+	Pool *pool;
+//	Members *mirror;
+	int rx_fd;
+};
+
+Package *Handle_createPackage(Pool *pool, int rx_fd)
+{
+	Package *p = malloc(sizeof(*p));
+	if (!p) {
+		return NULL;
+	}
+	p->pool = pool;
+	p->rx_fd = rx_fd;
+	return p;
+}
+
+static void *Handle_print(void *arg)
+{
+	(void)arg;
+	printf("We passed something through\n");
+	return NULL;
+}
 
 void *Handle_request(void *arg)
 {
-	int rx_fd = *(int *)arg;
-	if (send(rx_fd, "Hello, world!\n", 14, 0) == -1) {
+	Package *package = arg;
+
+	if (send(package->rx_fd, "Hello, world!\n", 14, 0) == -1) {
 		perror("send");
 	}
-	close(rx_fd);
+	close(package->rx_fd);
+	Pool_addTask(package->pool, Handle_print, NULL);
+	free(package);
 	return NULL;
 }
 
