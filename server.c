@@ -89,6 +89,12 @@ int main(void)
 		close(sockfd);
 		exit(1);
 	}
+	Mirrors *mirrors = Mirrors_create();
+	if (!mirrors) {
+		close(sockfd);
+		free(pool);
+		exit(1);
+	}
 
 	printf("server: waiting for connections...\n");
 	while (1) {
@@ -105,7 +111,7 @@ int main(void)
 		inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof(s));
 		printf("server: got connection from %s:%d\n", s, ntohs(get_in_port((struct sockaddr *)&their_addr)));
 
-		Package *packet = Handle_createPackage(pool, new_fd);
+		Package *packet = Handle_createPackage(pool, mirrors, new_fd);
 		if (!packet) {
 			perror("createPackage");
 			continue;
@@ -120,6 +126,7 @@ int main(void)
 
 	}
 	Pool_wait(pool);
+	Mirrors_delete(mirrors);
 	Pool_destroy(pool);
 	close(sockfd);
 	return 0;
