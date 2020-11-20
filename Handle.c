@@ -9,8 +9,6 @@
 #include "Pool.h"
 #include "Mirrors.h"
 
-#define MAXDATASIZE 100
-
 struct package {
 	Pool *pool;
 	Mirrors *mirrors;
@@ -70,6 +68,16 @@ static void *Handle_sendMirrorAscii(Package *package)
 	return NULL;
 }
 
+static void Handle_revString(char *s)
+{
+	int end = strlen(s) - 1;
+	for (int i = 0; i < end; ++i && --end) {
+		s[i] = s[i] ^ s[end];
+		s[end] = s[i] ^ s[end];
+		s[i] = s[i] ^ s[end];
+	}
+}
+
 void *Handle_request(void *arg)
 {
 	Package *package = arg;
@@ -91,6 +99,7 @@ void *Handle_request(void *arg)
 			break;
 		case 1:
 			// function to invert string
+			Handle_revString(package->message);
 			if (send(package->rx_fd, package->message, pkt.size, 0) == -1) {
 				perror("send_type1");
 			}
