@@ -40,16 +40,13 @@ void *Handle_request(void *arg)
 	if (send(package->rx_fd, "Hello, world!\n", 14, 0) == -1) {
 		perror("send");
 	}
-	char s[INET6_ADDRSTRLEN];
 
 	struct sockaddr_storage *addr = malloc(sizeof(*addr));
-	socklen_t addr_sz = sizeof(struct sockaddr_in);
+	socklen_t addr_sz = sizeof(struct sockaddr_storage);
 	getpeername(package->rx_fd, (struct sockaddr *)addr, &addr_sz);
 
-	inet_ntop(addr->ss_family, get_in_addr((struct sockaddr *)addr), s, sizeof(s));
-	printf("thread: got connection from %s:%d\n", s, ntohs(get_in_port((struct sockaddr *)addr)));
-
 	Mirrors_add(package->mirrors, addr);
+	Mirrors_rm(package->mirrors, addr);
 	close(package->rx_fd);
 	Pool_addTask(package->pool, Handle_print, NULL);
 	free(package);
