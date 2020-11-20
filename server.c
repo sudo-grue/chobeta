@@ -80,11 +80,13 @@ int main(void)
 
 	if (sigaction(SIGINT, &si, NULL) == -1) {
 		perror("sigint");
+		close(sockfd);
 		exit(1);
 	}
 
 	Pool *pool = Pool_create(152);
 	if (!pool) {
+		close(sockfd);
 		exit(1);
 	}
 
@@ -102,7 +104,20 @@ int main(void)
 		}
 		inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof(s));
 		printf("server: got connection from %s:%d\n", s, ntohs(get_in_port((struct sockaddr *)&their_addr)));
-		Pool_addTask(pool, Handle_request, &new_fd);
+
+		Package *packet = Handle_createPackage(pool, new_fd);
+		if (!packet) {
+			perror("createPackage");
+			continue;
+		}
+
+		if (!Pool_addTask(pool, Handle_request, packet)) {
+			perror("Pool_addTask");
+			close(sockfd);
+			close(new_fd);
+			exit(1);
+		}
+
 	}
 	Pool_wait(pool);
 	Pool_destroy(pool);
