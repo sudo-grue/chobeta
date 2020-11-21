@@ -2,6 +2,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
 #include <errno.h>
 #include <unistd.h>
 #include <limits.h>
@@ -66,10 +68,8 @@ void *Handle_request(void *arg)
 			perror("send_type0");
 		}
 		//TODO: Remove these free's after sendMirrorMsg written
-		free(pkg->message);
-		pkg_unused = true;
-//		Pool_addTask(pkg->pool, Handle_sendMirrorsMsg, pkg); //must free
-		
+		Pool_addTask(pkg->pool, Handle_sendMirrorsMsg, pkg); //must free
+
 	} else if (pkt.type == 3 && pkt.size == 0) {
 		struct sockaddr_storage *addr = malloc(sizeof(*addr));
 		socklen_t addr_sz = sizeof(struct sockaddr_storage);
@@ -115,16 +115,62 @@ u_int16_t Handle_getPort(struct sockaddr *sa)
 	return (((struct sockaddr_in6 *)sa)->sin6_port);
 }
 
+//TODO: Validation and error handling
 static void *Handle_sendMirrorsMsg(void *arg)
 {
 	Package *pkg = arg;
 	Mirrors *m = pkg->mirrors;
+	struct sockaddr_storage their_addr;
+	struct addrinfo hints, *servinfo, *p;
+	int rv, tx_fd;
+	u_int16_t port;
+	char s[INET6_ADDRSTRLEN];
+	char port_str[8];
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+
 	pthread_rwlock_rdlock(&m->lock);
 	{
-	// for mirror in mirrors
-	//     establish connection
-	//     send *message
-	//     close socket
+		Mirror *mir = m->head;
+		while (mir) {
+			their_addr = *mir->sa;
+			// populate s with distant end
+			inet_ntop(their_addr.ss_family, Handle_getAddr((struct sockaddr *)&their_addr), s, sizeof(s));
+			// populate port_str with distant end
+			port = ntohs(Handle_getPort((struct sockaddr *)&their_addr));
+			sprintf(port_str, "%d", port);
+			
+			if ((rv = getaddrinfo(s, port_str, &hints, &servinfo)) != 0) {
+				fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+				break;
+			}
+			printf("Trying %s:%s\n", s, port_str);
+			for(p = servinfo; p != NULL; p = p->ai_next) {
+				if ((tx_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+					perror("client: socket");
+					continue;
+				}
+
+				if (connect(tx_fd, p->ai_addr, p->ai_addrlen) == -1) {
+					close(tx_fd);
+					perror("client: connect");
+					continue;
+				}
+				break;
+			}
+			if (p == NULL) {
+				fprintf(stderr, "client: failed to connect\n");
+				return NULL;
+			}
+			freeaddrinfo(servinfo);
+			if (send(tx_fd, pkg->message, strlen(pkg->message), 0) == -1) {
+				perror("send");
+			}
+			close(tx_fd);
+			mir = mir->next;
+		}
 	}
 	pthread_rwlock_unlock(&m->lock);
 	free(pkg->message);
