@@ -108,8 +108,8 @@ int main(void)
 			perror("accept");
 			continue;
 		}
-		inet_ntop(their_addr.ss_family, get_in_addr((struct sockaddr *)&their_addr), s, sizeof(s));
-		printf("server: got connection from %s:%d\n", s, ntohs(get_in_port((struct sockaddr *)&their_addr)));
+		inet_ntop(their_addr.ss_family, Handle_getAddr((struct sockaddr *)&their_addr), s, sizeof(s));
+		printf("server: got connection from %s:%d\n", s, ntohs(Handle_getPort((struct sockaddr *)&their_addr)));
 
 		Package *packet = Handle_createPackage(pool, mirrors, new_fd);
 		if (!packet) {
@@ -121,7 +121,7 @@ int main(void)
 			perror("Pool_addTask");
 			close(sockfd);
 			close(new_fd);
-			exit(1);
+			break;
 		}
 
 	}

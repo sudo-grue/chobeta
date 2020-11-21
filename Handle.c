@@ -4,6 +4,8 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <unistd.h>
+#include <limits.h>
+#include <string.h>
 #include "Handle.h"
 #include "Pool.h"
 #include "Mirrors.h"
@@ -12,51 +14,91 @@ struct package {
 	Pool *pool;
 	Mirrors *mirrors;
 	int rx_fd;
+	union {
+		char *message;
+		uint64_t ascii_val;
+	};
 };
+
+struct header {
+	uint8_t type;
+	uint32_t size;
+};
+
+static void *Handle_sendMirrorsMsg(Package *p);
+static void *Handle_sendMirrorsAscii(Package *p);
+static void Handle_revString(char *s);
+static void Handle_ascii(Package *p);
+
+// main() for threads
+void *Handle_request(Package *pkg)
+{
+	struct header pkt;
+	bool pkg_unused = true;
+
+
+	if ((recv(pkg->rx_fd, &pkt, sizeof(pkt), 0)) == -1) {
+		perror("recv");
+		close(pkg->rx_fd);
+		free(pkg);
+		return NULL;
+	}
+	if (pkt.type < 3 && pkt.size < USHRT_MAX) {
+		pkg->message = calloc(pkt.size + 1, sizeof(char));
+		//log event
+		pkg_unused = false;
+		switch(pkt.type) {
+		case 0:
+			if (send(pkg->rx_fd, pkg->message, pkt.size, 0) == -1) {
+				perror("send_type0");
+			}
+			Pool_addTask(pkg->pool, Handle_sendMirrorsMsg, pkg);
+			// queue task to send to mirrors, that thread will free
+			break;
+		case 1:
+			Handle_revString(pkg->message);
+			if (send(pkg->rx_fd, pkg->message, pkt.size, 0) == -1) {
+				perror("send_type1");
+			}
+			// same func() as case 0
+			break;
+		case 2:
+			Handle_ascii(pkg);
+			if (send(pkg->rx_fd, &pkg->ascii_val, sizeof(pkg->ascii_val), 0) == -1) {
+				perror("send_type2");
+			}
+			//queue task to send to mirrors
+			break;
+		}
+	} else if (pkt.type == 3 && pkt.size == 0) {
+		struct sockaddr_storage *addr = malloc(sizeof(*addr));
+		socklen_t addr_sz = sizeof(struct sockaddr_storage);
+		getpeername(pkg->rx_fd, (struct sockaddr *)addr, &addr_sz);
+		Mirrors_add(pkg->mirrors, addr);
+	}
+
+	close(pkg->rx_fd);
+	if (pkg_unused) {
+		free(pkg);
+	}
+	return NULL;
+}
 
 Package *Handle_createPackage(Pool *pool, Mirrors *mirrors, int rx_fd)
 {
-	Package *p = malloc(sizeof(*p));
-	if (!p) {
+	Package *pkg = malloc(sizeof(*pkg));
+	if (!pkg) {
 		return NULL;
 	}
-	p->pool = pool;
-	p->mirrors = mirrors;
-	p->rx_fd = rx_fd;
-	return p;
+	pkg->pool = pool;
+	pkg->mirrors = mirrors;
+	pkg->rx_fd = rx_fd;
+	pkg->message = NULL;
+	return pkg;
 }
 
-static void *Handle_print(void *arg)
-{
-	(void)arg;
-	printf("We passed something through\n");
-	return NULL;
-}
-
-void *Handle_request(void *arg)
-{
-	Package *package = arg;
-
-	if (send(package->rx_fd, "Hello, world!\n", 14, 0) == -1) {
-		perror("send");
-	}
-	char s[INET6_ADDRSTRLEN];
-
-	struct sockaddr_storage *addr = malloc(sizeof(*addr));
-	socklen_t addr_sz = sizeof(struct sockaddr_in);
-	getpeername(package->rx_fd, (struct sockaddr *)addr, &addr_sz);
-
-	inet_ntop(addr->ss_family, get_in_addr((struct sockaddr *)addr), s, sizeof(s));
-	printf("thread: got connection from %s:%d\n", s, ntohs(get_in_port((struct sockaddr *)addr)));
-
-	Mirrors_add(package->mirrors, addr);
-	close(package->rx_fd);
-	Pool_addTask(package->pool, Handle_print, NULL);
-	free(package);
-	return NULL;
-}
-
-void *get_in_addr(struct sockaddr *sa)
+// Beej networking guide
+void *Handle_getAddr(struct sockaddr *sa)
 {
 	if (sa->sa_family == AF_INET) {
 		return &(((struct sockaddr_in *)sa)->sin_addr);
@@ -65,10 +107,59 @@ void *get_in_addr(struct sockaddr *sa)
 }
 
 // https://stackoverflow.com/questions/2371910/how-to-get-the-port-number-from-struct-addrinfo-in-unix-c
-u_int16_t get_in_port(struct sockaddr *sa)
+u_int16_t Handle_getPort(struct sockaddr *sa)
 {
 	if (sa->sa_family == AF_INET) {
 		return (((struct sockaddr_in *)sa)->sin_port);
 	}
 	return (((struct sockaddr_in6 *)sa)->sin6_port);
 }
+
+static void *Handle_sendMirrorsMsg(Package *pkg)
+{
+	Mirrors *m = pkg->mirrors;
+	pthread_rwlock_rdlock(&m->lock);
+	// for mirror in mirrors
+	//     establish connection
+	//     send *message
+	//     close socket
+	pthread_rwlock_unlock(&m->lock);
+	return NULL;
+}
+
+static void *Handle_sendMirrorsAscii(Package *pkg)
+{
+	Mirrors *m = pkg->mirrors;
+	pthread_rwlock_rdlock(&m->lock);
+	// for mirror in mirrors
+	//     establish connection
+	//     send ascii_val
+	//     close socket
+	pthread_rwlock_unlock(&m->lock);
+	return NULL;
+}
+
+static void Handle_revString(char *str)
+{
+	int end = strlen(str) - 1;
+	for (int i = 0; i < end; ++i) {
+		str[i] = str[i] ^ str[end];
+		str[end] = str[i] ^ str[end];
+		str[i] = str[i] ^ str[end];
+		--end;
+	}
+}
+
+static void Handle_ascii(Package *pkg)
+{
+	uint64_t ret = 0;
+	char *str = pkg->message;
+
+	while (*str != '\0') {
+		ret += *str;
+		++str;
+	}
+	free(pkg->message);
+	pkg->ascii_val = ret;
+}
+
