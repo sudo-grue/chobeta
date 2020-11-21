@@ -9,11 +9,6 @@ struct mirror {
 	struct sockaddr_storage *sa;
 };
 
-struct mirrors {
-	Mirror *head;
-	pthread_rwlock_t lock;
-};
-
 Mirrors *Mirrors_create(void)
 {
 	Mirrors *m = malloc(sizeof(*m));
