@@ -7,7 +7,10 @@
 #include <sys/socket.h>
 
 typedef struct mirror Mirror;
-typedef struct mirrors Mirrors;
+typedef struct mirrors {
+	Mirror *head;
+	pthread_rwlock_t lock;
+} Mirrors;
 
 Mirrors *Mirrors_create(void);
 bool Mirrors_add(Mirrors *m, struct sockaddr_storage *sa);
