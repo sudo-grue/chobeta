@@ -59,9 +59,9 @@ void *Handle_request(void *arg)
 			break;
 		case 2:
 			Handle_ascii(pkg->message);
+			pkt.size = strlen(pkg->message);
 			break;
 		}
-		pkt.size = strlen(pkg->message);
 		if (send(pkg->rx_fd, pkg->message, pkt.size, 0) == -1) {
 			perror("send_type0");
 		}
