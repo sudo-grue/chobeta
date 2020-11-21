@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+import sys
+import socket
+import struct
+import ipaddress
+
+'Not a fan of this hack, but it finds the int with default routing'
+def get_sock_ip():
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.connect(("169.254.1.1", 80))
+        return ipaddress.IPv4Interface(sock.getsockname()[0] + '/24')
+
+
+def main():
+    header = struct.pack('BI', 3, 0)
+    ip = get_sock_ip()
+    for host in list(ipaddress.ip_network(ip.network).hosts()):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(0.1)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.connect((str(host), 3490))
+                sock.send(header)
+                tx_sock = sock.getsockname()
+                rx_sock = sock.getpeername()
+                sock.close()
+                break
+            except (ConnectionRefusedError, OSError):
+                pass
+    print("My Port   :", tx_sock)
+    print("Their Port:", rx_sock)
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(tx_sock)
+        sock.listen(1)
+        conn, addr = sock.accept()
+        with conn:
+            print('Connected by', addr)
+            while True:
+                data = conn.recv(1024)
+                if not data: break
+                print('Received', repr(data))
+
+
+# Main body
+if __name__ == '__main__':
+    try:
+        main()
+    except (SystemExit, KeyboardInterrupt, GeneratorExit, Exception) as err:
+        # Disabled for production, maintained for debugging
+        print("Error: ", err)
+        print("Error.__cause__", err.__cause__)
+        print("Error.__class__", err.__class__.__name__)
+        print("Error.with_traceback", err.with_traceback)
+        # pass exists only for when debug off, so last line ends with a \n
+        pass
