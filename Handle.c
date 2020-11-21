@@ -25,7 +25,7 @@ struct header {
 
 static void *Handle_sendMirrorsMsg(void *arg);
 static void Handle_revString(char *s);
-static void Handle_ascii(char *s);
+static void Handle_ascii(Package *pkg);
 
 // main() for thread handling inbound socket connections
 void *Handle_request(void *arg)
@@ -58,14 +58,18 @@ void *Handle_request(void *arg)
 			Handle_revString(pkg->message);
 			break;
 		case 2:
-			Handle_ascii(pkg->message);
+			Handle_ascii(pkg);
+			pkt.size = strlen(pkg->message);
 			break;
 		}
-		pkt.size = strlen(pkg->message);
 		if (send(pkg->rx_fd, pkg->message, pkt.size, 0) == -1) {
 			perror("send_type0");
 		}
+		//TODO: Remove these free's after sendMirrorMsg written
+		free(pkg->message);
+		pkg_unused = true;
 //		Pool_addTask(pkg->pool, Handle_sendMirrorsMsg, pkg); //must free
+		
 	} else if (pkt.type == 3 && pkt.size == 0) {
 		struct sockaddr_storage *addr = malloc(sizeof(*addr));
 		socklen_t addr_sz = sizeof(struct sockaddr_storage);
@@ -139,10 +143,10 @@ static void Handle_revString(char *str)
 	}
 }
 
-static void Handle_ascii(char *string)
+static void Handle_ascii(Package *pkg)
 {
 	uint64_t ret = 0;
-	char *str = string;
+	char *str = pkg->message;
 
 	int num_char = 0;
 	while (*str != '\0') {
@@ -151,9 +155,9 @@ static void Handle_ascii(char *string)
 		++num_char;
 	}
 	if (num_char < 5) {
-		string = realloc(string, 8);
+		pkg->message = realloc(pkg->message, 8);
 		num_char = 7;
 	}
-	snprintf(string, num_char, "%ld", ret);
+	snprintf(pkg->message, num_char, "%ld", ret);
 }
 

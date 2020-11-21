@@ -6,9 +6,12 @@ import struct
 server_add = ('172.21.10.21', 3490)
 
 def main():
-    string = 'zzzzzzz'
-    string = bytes(string, 'utf-8')
-    header = struct.pack('BI', 2, len(string))
+    args = sys.argv[1:]
+    if len(args) != 2:
+        print('usage: --type [string]')
+        sys.exit(1)
+    string = bytes(args[1], 'utf-8')
+    header = struct.pack('BI', int(args[0]), len(string))
     print('TX:', string.decode("utf-8"))
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect(server_add)
