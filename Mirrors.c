@@ -5,12 +5,12 @@
 #include <stdlib.h>
 
 struct mirror {
-	struct mirror *next;
+	Mirror *next;
 	struct sockaddr_storage *sa;
 };
 
 struct mirrors {
-	struct mirror *head;
+	Mirror *head;
 	pthread_rwlock_t lock;
 };
 
@@ -36,7 +36,7 @@ bool Mirrors_add(Mirrors *m, struct sockaddr_storage *sa)
 		return false;
 	}
 
-	struct mirror *mirror = malloc(sizeof(*mirror));
+	Mirror *mirror = malloc(sizeof(*mirror));
 	if (!mirror) {
 		return false;
 	}
