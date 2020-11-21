@@ -4,11 +4,6 @@
 #include <sys/types.h>
 #include <stdlib.h>
 
-struct mirror {
-	Mirror *next;
-	struct sockaddr_storage *sa;
-};
-
 Mirrors *Mirrors_create(void)
 {
 	Mirrors *m = malloc(sizeof(*m));
