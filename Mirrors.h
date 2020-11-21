@@ -6,7 +6,11 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-typedef struct mirror Mirror;
+typedef struct mirror {
+	struct mirror *next;
+	struct sockaddr_storage *sa;
+} Mirror;
+
 typedef struct mirrors {
 	Mirror *head;
 	pthread_rwlock_t lock;
