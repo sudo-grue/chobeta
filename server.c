@@ -121,7 +121,7 @@ int main(void)
 			perror("Pool_addTask");
 			close(sockfd);
 			close(new_fd);
-			exit(1);
+			break;
 		}
 
 	}
