@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-import sys
 import socket
-import struct
-import ipaddress
+from struct import pack
+from ipaddress import ip_network, IPv4Interface
 
-'Not a fan of this hack, but it finds the int with default routing'
+
 def get_sock_ip():
+    """ Not a fan of this hack, but it finds the int with default routing """
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.connect(("169.254.1.1", 80))
-        return ipaddress.IPv4Interface(sock.getsockname()[0] + '/24')
+        return IPv4Interface(sock.getsockname()[0] + '/24')
 
 
 def main():
-    header = struct.pack('BI', 3, 0)
+    header = pack('BI', 3, 0)
     ip = get_sock_ip()
-    for host in list(ipaddress.ip_network(ip.network).hosts()):
+    for host in list(ip_network(ip.network).hosts()):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(0.1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -27,22 +27,22 @@ def main():
                 break
             except (ConnectionRefusedError, OSError):
                 pass
-    print("My Port   :", tx_sock)
-    print("Their Port:", rx_sock)
+    print("My Info   :", tx_sock)
+    print("Their Info:", rx_sock)
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind(tx_sock)
         sock.listen(1)
-        conn, addr = sock.accept()
-        with conn:
-            print('Connected by', addr)
-            while True:
-                data = conn.recv(1024)
-                if not data: break
-                print('Received', repr(data))
+        while True:
+            conn, addr = sock.accept()
+            with conn:
+                while True:
+                    data = conn.recv(1024)
+                    if not data:
+                        break
+                    print('Received', repr(data))
 
 
-# Main body
 if __name__ == '__main__':
     try:
         main()
