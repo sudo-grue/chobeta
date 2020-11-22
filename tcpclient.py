@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import sys
 import socket
-import struct
+from struct import pack
 
-server_add = ('172.21.10.21', 3490)
+server_add = ("172.21.10.21", 3490)
+
 
 def main():
     args = sys.argv[1:]
@@ -11,17 +12,16 @@ def main():
         print('usage: --type [string]')
         sys.exit(1)
     string = bytes(args[1], 'utf-8')
-    header = struct.pack('BI', int(args[0]), len(string))
+    header = pack('BI', int(args[0]), len(string))
     print('TX:', string.decode("utf-8"))
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.connect(server_add)
         sock.send(header)
         sock.sendall(string)
-        data=sock.recv(1024)
+        data = sock.recv(1024)
     print('RX:', data.decode("utf-8"))
-    sock.close()
 
-# Main body
+
 if __name__ == '__main__':
     try:
         main()
