@@ -18,7 +18,7 @@ typedef struct mirrors {
 
 Mirrors *Mirrors_create(void);
 bool Mirrors_add(Mirrors *m, struct sockaddr_storage *sa);
-void Mirrors_rm(Mirrors *m, struct sockaddr_storage *sa);
+void Mirrors_rm(Mirrors *m, Mirror *del);
 void Mirrors_delete(Mirrors *m);
 
 #endif
