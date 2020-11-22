@@ -16,7 +16,10 @@
 struct package {
 	Pool *pool;
 	Mirrors *mirrors;
-	int rx_fd;
+	union {
+		int rx_fd;
+		Mirror *mir;
+	};
 	char *message;
 };
 
@@ -28,6 +31,7 @@ struct header {
 static void *Handle_sendMirrorsMsg(void *arg);
 static void Handle_revString(char *s);
 static void Handle_ascii(Package *pkg);
+static void *Handle_rmMirror(void *arg);
 
 // main() for thread handling inbound socket connections
 void *Handle_request(void *arg)
@@ -67,8 +71,7 @@ void *Handle_request(void *arg)
 		if (send(pkg->rx_fd, pkg->message, pkt.size, 0) == -1) {
 			perror("send_type0");
 		}
-		//TODO: Remove these free's after sendMirrorMsg written
-		Pool_addTask(pkg->pool, Handle_sendMirrorsMsg, pkg); //must free
+		Pool_addTask(pkg->pool, Handle_sendMirrorsMsg, pkg);
 
 	} else if (pkt.type == 3 && pkt.size == 0) {
 		struct sockaddr_storage *addr = malloc(sizeof(*addr));
@@ -123,9 +126,10 @@ static void *Handle_sendMirrorsMsg(void *arg)
 	struct sockaddr_storage their_addr;
 	struct addrinfo hints, *servinfo, *p;
 	int rv, tx_fd;
-	u_int16_t port;
+//	u_int16_t port;
 	char s[INET6_ADDRSTRLEN];
-	char port_str[8];
+	char port[8];
+	bool pkg_inuse = false;
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
@@ -136,17 +140,13 @@ static void *Handle_sendMirrorsMsg(void *arg)
 		Mirror *mir = m->head;
 		while (mir) {
 			their_addr = *mir->sa;
-			// populate s with distant end
 			inet_ntop(their_addr.ss_family, Handle_getAddr((struct sockaddr *)&their_addr), s, sizeof(s));
-			// populate port_str with distant end
-			port = ntohs(Handle_getPort((struct sockaddr *)&their_addr));
-			sprintf(port_str, "%d", port);
+			sprintf(port, "%d", ntohs(Handle_getPort((struct sockaddr *)&their_addr)));
 			
-			if ((rv = getaddrinfo(s, port_str, &hints, &servinfo)) != 0) {
+			if ((rv = getaddrinfo(s, port, &hints, &servinfo)) != 0) {
 				fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 				break;
 			}
-			printf("Trying %s:%s\n", s, port_str);
 			for(p = servinfo; p != NULL; p = p->ai_next) {
 				if ((tx_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
 					perror("client: socket");
@@ -161,19 +161,33 @@ static void *Handle_sendMirrorsMsg(void *arg)
 				break;
 			}
 			if (p == NULL) {
-				fprintf(stderr, "client: failed to connect\n");
-				return NULL;
+				fprintf(stderr, "client: failed to connect to %s:%s\n", s, port);
+				// TODO: Change to allow more than most recent bad mirror to be deleted (void ll should be written for many things)
+				pkg_inuse = true;
+				pkg->mir = mir;
+				Pool_addTask(pkg->pool, Handle_rmMirror, pkg);
+			} else {
+				if (send(tx_fd, pkg->message, strlen(pkg->message), 0) == -1) {
+					perror("send");
+				}
 			}
 			freeaddrinfo(servinfo);
-			if (send(tx_fd, pkg->message, strlen(pkg->message), 0) == -1) {
-				perror("send");
-			}
 			close(tx_fd);
 			mir = mir->next;
 		}
 	}
 	pthread_rwlock_unlock(&m->lock);
 	free(pkg->message);
+	if (!pkg_inuse) {
+		free(pkg);
+	}
+	return NULL;
+}
+
+static void *Handle_rmMirror(void *arg)
+{
+	Package *pkg = arg;
+	Mirrors_rm(pkg->mirrors, pkg->mir);
 	free(pkg);
 	return NULL;
 }

@@ -42,43 +42,35 @@ bool Mirrors_add(Mirrors *m, struct sockaddr_storage *sa)
 	return true;
 }
 
-void Mirrors_rm(Mirrors *m, struct sockaddr_storage *sa)
+void Mirrors_rm(Mirrors *m, Mirror *del)
 {
-	if (!m || !sa) {
+	if (!m || !del) {
 		return;
 	}
 	Mirror *curr = m->head;
 	Mirror *next = m->head->next;
-	if (curr->sa == sa) {
-		pthread_rwlock_wrlock(&m->lock);
-		{
-			// verify it's still there after lock
-			if (curr->sa == sa) {
-				m->head = next;
-			}
-		}
-		pthread_rwlock_unlock(&m->lock);
-		curr->next = NULL;
-		free(curr->sa);
-		free(curr);
-	} else {
-		while (next) {
-			if (next->sa == sa) {
-				pthread_rwlock_wrlock(&m->lock);
-				{
-					if (next->sa == sa) {
-						curr->next = next->next;
-					}
+
+	pthread_rwlock_wrlock(&m->lock);
+	{
+		if (curr == del) {
+			m->head = next;
+			curr->next = NULL;
+			free(curr->sa);
+			free(curr);
+		} else {
+			while (next) {
+				if (next == del) {
+					curr->next = next->next;
+					free(next->sa);
+					free(next);
+					break;
 				}
-				pthread_rwlock_unlock(&m->lock);
-				curr->next = NULL;
-				free(curr->sa);
-				free(curr);
+				curr = next;
+				next = next->next;
 			}
-			curr = next;
-			next = next->next;
 		}
 	}
+	pthread_rwlock_unlock(&m->lock);
 }
 
 void Mirrors_delete(Mirrors *m)
