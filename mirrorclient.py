@@ -40,7 +40,7 @@ def main():
                     data = conn.recv(1024)
                     if not data:
                         break
-                    print('Received', repr(data))
+                    print('RX:', data.decode("utf-8"))
 
 
 if __name__ == '__main__':
