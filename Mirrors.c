@@ -78,8 +78,8 @@ void Mirrors_delete(Mirrors *m)
 	if (!m) {
 		return;
 	}
-	Mirror *temp = m->head;
 	pthread_rwlock_wrlock(&m->lock);
+	Mirror *temp = m->head;
 	while (temp) {
 		Mirror *prev = temp;
 		temp = temp->next;
