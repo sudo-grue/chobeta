@@ -1,19 +1,13 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
-#include <errno.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
+#include <errno.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
-#include <signal.h>
 
 #include "Handle.h"
 #include "Pool.h"
-#include <pthread.h>
+#include "Socket.h"
 
 #define PORT "3490"		// the port users will be connecting to
 #define BACKLOG 10		// how many pending connections queue will hold
@@ -26,13 +20,21 @@ void sigint_handler(int s)
 int main(void)
 {
 	int sockfd, new_fd;	// listen on sock_fd, new connection on new_fd
-	struct addrinfo hints, *servinfo, *p;
+	struct addrinfo *servinfo;
 	struct sockaddr_storage their_addr;	// connector's address information
 	socklen_t sin_size;
-	int yes = 1;
 	char s[INET6_ADDRSTRLEN];
-	int rv;
+//	char port[5] = "3490\0";
 
+	struct sigaction si = {
+		.sa_handler = sigint_handler,
+	};
+
+	if (sigaction(SIGINT, &si, NULL) == -1) {
+		perror("sigint");
+		exit(1);
+	}
+/*
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
@@ -42,45 +44,17 @@ int main(void)
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return 1;
 	}
-	// loop through all the results and bind to the first we can
-	for (p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-			perror("server: socket");
-			continue;
-		}
-
-		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
-			perror("setsockopt");
-			exit(1);
-		}
-
-		if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-			close(sockfd);
-			perror("server: bind");
-			continue;
-		}
-		break;
-	}
-
-	freeaddrinfo(servinfo);	// all done with this structure
-
-	if (p == NULL) {
-		fprintf(stderr, "server: failed to bind\n");
+*/
+	servinfo = Socket_getServInfo(NULL, PORT);
+	if (!servinfo) {
 		exit(1);
 	}
+	sockfd = Socket_bindSocket(servinfo);
+
+	freeaddrinfo(servinfo);
 
 	if (listen(sockfd, BACKLOG) == -1) {
 		perror("listen");
-		exit(1);
-	}
-
-	struct sigaction si = {
-		.sa_handler = sigint_handler,
-	};
-
-	if (sigaction(SIGINT, &si, NULL) == -1) {
-		perror("sigint");
-		close(sockfd);
 		exit(1);
 	}
 
